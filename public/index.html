@@ -130,6 +130,21 @@
       </div>
       <p class="empty-tip hidden" id="convert-empty">还没有换算结果</p>
     </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>时差对照</h2>
+        <div class="filters">
+          <label class="inline" data-field="aZoneId">第一条<select id="compare-a"></select></label>
+          <button type="button" id="compare-swap" class="ghost" title="把两条档案对调">互换</button>
+          <label class="inline" data-field="bZoneId">第二条<select id="compare-b"></select></label>
+          <label class="inline" data-field="year">对照年份<input id="compare-year" type="number" min="1900" max="2100" class="year-input"></label>
+          <button type="button" id="compare-run">对照一遍</button>
+        </div>
+      </div>
+      <p class="convert-meta" id="compare-meta">任选两条档案，算出两地的标准偏移差、眼下有没有一边处在夏令时、一年里各时段时差分别是多少，以及当地日期最多差几天、几点翻日</p>
+      <div class="compare-result hidden" id="compare-result"></div>
+    </section>
   </main>
 
   <script src="app.js"></script>

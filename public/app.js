@@ -2,9 +2,11 @@
 
 const state = {
   zones: [],
+  allZones: [],
   counts: { total: 0, dstCount: 0, noDstCount: 0 },
   editingId: '',
   lastConvert: null,
+  lastCompare: null,
 };
 
 const MONTHS = [
@@ -134,6 +136,13 @@ async function loadZones() {
   renderConvertZoneOptions();
 }
 
+// 对照的两个下拉不受筛选影响，始终列出全部档案
+async function loadAllZones() {
+  const payload = await request('/api/zones');
+  state.allZones = payload.zones || [];
+  renderCompareZoneOptions();
+}
+
 function renderZones() {
   el('zone-counts').textContent = `共登记 ${state.counts.total} 条档案，其中实行夏令时 ${state.counts.dstCount} 条，不实行 ${state.counts.noDstCount} 条；当前筛选出 ${state.zones.length} 条`;
   const body = el('zone-body');
@@ -161,6 +170,160 @@ function renderConvertZoneOptions() {
     .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}　${escapeHtml(item.displayName)}</option>`)
     .join('');
   if (state.zones.some((item) => item.id === current)) select.value = current;
+}
+
+function compareOptionList() {
+  return state.allZones
+    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}　${escapeHtml(item.displayName)}（${escapeHtml(item.offsetText)}）</option>`)
+    .join('');
+}
+
+function renderCompareZoneOptions() {
+  const selectA = el('compare-a');
+  const selectB = el('compare-b');
+  const currentA = selectA.value;
+  const currentB = selectB.value;
+  selectA.innerHTML = compareOptionList();
+  selectB.innerHTML = compareOptionList();
+  if (state.allZones.some((item) => item.id === currentA)) selectA.value = currentA;
+  if (state.allZones.some((item) => item.id === currentB)) selectB.value = currentB;
+  // 第一次填下拉时，默认选两条不同的档案，方便直接对照
+  if (!currentA && !currentB && state.allZones.length >= 2) {
+    selectA.selectedIndex = 0;
+    selectB.selectedIndex = Math.min(1, state.allZones.length - 1);
+  }
+}
+
+async function runCompare() {
+  clearNotice();
+  const payload = {
+    aZoneId: el('compare-a').value,
+    bZoneId: el('compare-b').value,
+    year: el('compare-year').value,
+  };
+  try {
+    const result = await request('/api/compare', { method: 'POST', body: JSON.stringify(payload) });
+    state.lastCompare = result;
+    renderCompare(result);
+  } catch (err) {
+    notify(err.message, 'error');
+    markField(err.field);
+  }
+}
+
+function diffTag(parts, minutes) {
+  if (minutes === 0) return '<span class="tag off">零时差</span>';
+  const signText = minutes > 0 ? '+' : '-';
+  return `<span class="tag ${minutes === 0 ? 'off' : 'on'}">${signText}${parts.hours} 小时 ${String(parts.minutes).padStart(2, '0')} 分</span>`;
+}
+
+function sideCard(side) {
+  const dstTag = side.usesDst
+    ? (side.activeNow ? '<span class="tag on">夏令时生效中</span>' : '<span class="tag off">当前按标准时间</span>')
+    : '<span class="tag off">不实行夏令时</span>';
+  return `<div class="compare-side">
+      <div class="compare-side-name mono">${escapeHtml(side.name)}</div>
+      <div>${escapeHtml(side.displayName)}</div>
+      <div class="compare-side-off">
+        标准偏移 <span class="mono">${escapeHtml(side.standardOffsetText)}</span>
+        ${side.dstOffsetText ? `　夏令时偏移 <span class="mono">${escapeHtml(side.dstOffsetText)}</span>` : ''}
+      </div>
+      <div>${dstTag} <span class="muted">${escapeHtml(side.statusText)}</span></div>
+      <div class="muted">此刻实际偏移 <span class="mono">${escapeHtml(side.activeOffsetText)}</span></div>
+    </div>`;
+}
+
+function renderCompare(result) {
+  el('compare-meta').textContent = `对照年份 ${result.year}；生成于 ${formatTime(result.generatedAt)}`;
+  const box = el('compare-result');
+  box.classList.remove('hidden');
+
+  const special = result.special ? `<div class="compare-special ${result.self ? 'self' : ''}">${escapeHtml(result.special.text)}</div>` : '';
+
+  const caseRows = result.dstCases.map((item) => `<tr class="${item.occurs ? '' : 'muted-row'}">
+      <td>${escapeHtml(item.label)}</td>
+      <td>${diffTag(item.diffParts, item.diffMinutes)}</td>
+      <td>${escapeHtml(item.text)}</td>
+    </tr>`).join('');
+
+  const segRows = result.dateGap.segments.map((seg, index) => {
+    const rangeText = (stamp) => `${stamp.date} ${stamp.time}`;
+    const startNote = seg.startStamp.atYearStart ? `${result.year} 年初延续下来的状态` : `自 ${rangeText(seg.startStamp.a)}（${escapeHtml(result.a.name)}）／${rangeText(seg.startStamp.b)}（${escapeHtml(result.b.name)}）起`;
+    const endNote = seg.endStamp.atYearEnd ? '一直延续到年底' : `到 ${rangeText(seg.endStamp.a)}（${escapeHtml(result.a.name)}）／${rangeText(seg.endStamp.b)}（${escapeHtml(result.b.name)}）止`;
+    return `<div class="seg-card">
+      <div class="seg-head">
+        <span class="seg-index">时段 ${index + 1}</span>
+        ${diffTag(seg.diffParts, seg.diffMinutes)}
+        <span class="tag ${seg.aMode === '夏令时' ? 'on' : 'off'}">A：${escapeHtml(seg.aMode)}</span>
+        <span class="tag ${seg.bMode === '夏令时' ? 'on' : 'off'}">B：${escapeHtml(seg.bMode)}</span>
+      </div>
+      <div class="seg-range muted">${escapeHtml(startNote)}；${escapeHtml(endNote)}</div>
+      <div class="seg-gap">${escapeHtml(seg.gap.text)}</div>
+      <ul class="flip-list">
+        <li>${escapeHtml(seg.flip.leaderFirstText || seg.flip.text)}</li>
+        ${seg.flip.laggerCatchText ? `<li>${escapeHtml(seg.flip.laggerCatchText)}</li>` : ''}
+      </ul>
+    </div>`;
+  }).join('');
+
+  const switchBlocks = result.switches.map((sw) => {
+    if (!sw.segments.length) {
+      return `<div class="switch-block">
+        <div class="switch-name mono">${escapeHtml(sw.name)} <span class="tag off">${sw.expired ? `${result.year} 年夏令时规则已失效` : '这一年没有夏令时生效期'}</span></div>
+      </div>`;
+    }
+    const segHtml = sw.segments.map((seg) => {
+      const startLine = seg.carryIn
+        ? `年初仍在夏令时里，${escapeHtml(sw.name)} 当地到 <span class="mono">${seg.end.daylight.date} ${seg.end.daylight.time}</span>（夏令时钟）时倒回 <span class="mono">${seg.end.standard.date} ${seg.end.standard.time}</span>（标准时钟），夏令时结束`
+        : '';
+      const endLine = seg.carryOut
+        ? `夏令时从 <span class="mono">${seg.start.standard.date} ${seg.start.standard.time}</span>（标准时钟）拨到 <span class="mono">${seg.start.daylight.date} ${seg.start.daylight.time}</span>（夏令时钟）开始，一直延续到年底`
+        : '';
+      const normalLine = (!seg.carryIn && !seg.carryOut)
+        ? `开始：当地标准时钟走到 <span class="mono">${seg.start.standard.date} ${seg.start.standard.time}</span> 时拨到夏令时钟的 <span class="mono">${seg.start.daylight.time}</span>（同一天少掉 ${escapeHtml(sw.jumpText.replace('钟拨快 ', ''))}）；结束：夏令时钟走到 <span class="mono">${seg.end.daylight.date} ${seg.end.daylight.time}</span> 时倒回标准时钟的 <span class="mono">${seg.end.standard.time}</span>（这一小时过两遍）`
+        : '';
+      return `<li>${startLine}${normalLine}${endLine}</li>`;
+    }).join('');
+    return `<div class="switch-block">
+      <div class="switch-name mono">${escapeHtml(sw.name)} <span class="tag on">${escapeHtml(sw.jumpText)}</span></div>
+      <ul class="switch-list">${segHtml}</ul>
+    </div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="compare-sides">
+      ${sideCard(result.a)}
+      <div class="compare-vs">对<br>照</div>
+      ${sideCard(result.b)}
+    </div>
+    ${special}
+    <div class="result-block">
+      <h4>标准偏移差</h4>
+      <p>${escapeHtml(result.standard.offsetText)}；${escapeHtml(result.standard.text)}。按小时与分钟写：<span class="mono">${result.standard.diffParts.sign}${result.standard.diffParts.hours} 小时 ${String(result.standard.diffParts.minutes).padStart(2, '0')} 分</span>（正号表示 B 比 A 早）</p>
+    </div>
+    <div class="result-block">
+      <h4>当前是否有一边处在夏令时</h4>
+      <p>${escapeHtml(result.current.text)}</p>
+    </div>
+    <div class="result-block">
+      <h4>一年里四种状态下的时差</h4>
+      <div class="table-wrap">
+        <table class="grid compare-table">
+          <thead><tr><th>状态组合</th><th>时差</th><th>说明</th></tr></thead>
+          <tbody>${caseRows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="result-block">
+      <h4>当地日期最多差几天、几点翻到前后一天</h4>
+      <p class="gap-summary">${escapeHtml(result.dateGap.summaryText)}</p>
+      <div class="seg-list">${segRows}</div>
+    </div>
+    <div class="result-block">
+      <h4>夏令时切换边界（当地几点拨钟）</h4>
+      ${switchBlocks}
+    </div>
+  `;
 }
 
 function openZoneForm(zone) {
@@ -240,6 +403,7 @@ async function submitZone(event) {
     }
     closeZoneForm();
     await loadZones();
+    await loadAllZones();
   } catch (err) {
     notify(err.message, 'error');
     markField(err.field);
@@ -301,6 +465,7 @@ document.addEventListener('click', async (event) => {
       if (state.editingId === node.dataset.zoneDelete) closeZoneForm();
       notify('时区档案已删除', 'ok');
       await loadZones();
+      await loadAllZones();
     } catch (err) {
       notify(err.message, 'error');
     }
@@ -330,6 +495,15 @@ el('zone-filter-dst').addEventListener('change', () => {
   loadZones().catch((err) => notify(err.message, 'error'));
 });
 el('convert-run').addEventListener('click', runConvert);
+el('compare-run').addEventListener('click', runCompare);
+el('compare-swap').addEventListener('click', () => {
+  clearNotice();
+  const selectA = el('compare-a');
+  const selectB = el('compare-b');
+  const keep = selectA.value;
+  selectA.value = selectB.value;
+  selectB.value = keep;
+});
 el('operator').addEventListener('change', () => {
   window.localStorage.setItem(OPERATOR_KEY, currentOperator());
 });
@@ -341,4 +515,6 @@ loadHealth();
 const now = new Date();
 el('convert-date').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 el('convert-time').value = '09:30';
+el('compare-year').value = String(now.getFullYear());
 loadZones().catch((err) => notify(err.message, 'error'));
+loadAllZones().catch((err) => notify(err.message, 'error'));

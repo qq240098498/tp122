@@ -374,3 +374,168 @@ label.full input {
   display: flex;
   gap: 10px;
 }
+
+/* 时差对照 */
+.year-input {
+  width: 86px;
+}
+
+.compare-result {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.result-block h4 {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.result-block p {
+  margin: 0;
+}
+
+.compare-sides {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.compare-side {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f9fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+}
+
+.compare-side-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.compare-side-off {
+  margin-top: 2px;
+}
+
+.compare-vs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+
+tr.muted-row {
+  color: var(--ink-soft);
+}
+
+tr.muted-row td {
+  background: #fafbfc;
+}
+
+.compare-special {
+  padding: 10px 12px;
+  border: 1px solid #b7ddc9;
+  border-radius: 6px;
+  background: #eefaf3;
+  color: var(--ok);
+  font-size: 13px;
+}
+
+.compare-special.self {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.compare-table {
+  min-width: 0;
+}
+
+.compare-table th,
+.compare-table td {
+  white-space: normal;
+}
+
+.gap-summary {
+  font-weight: 600;
+}
+
+.seg-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.seg-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px 10px;
+}
+
+.seg-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.seg-index {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.seg-range {
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+.seg-gap {
+  font-size: 13px;
+}
+
+.flip-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+
+.flip-list li + li {
+  margin-top: 2px;
+}
+
+.switch-block {
+  border-left: 3px solid var(--line);
+  padding: 2px 0 2px 12px;
+  margin-bottom: 10px;
+}
+
+.switch-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.switch-list {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.switch-list li + li {
+  margin-top: 4px;
+}
