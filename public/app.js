@@ -2,6 +2,7 @@
 
 const state = {
   zones: [],
+  allZones: [],
   counts: { total: 0, dstCount: 0, noDstCount: 0 },
   editingId: '',
   lastConvert: null,
@@ -163,6 +164,31 @@ function renderConvertZoneOptions() {
   if (state.zones.some((item) => item.id === current)) select.value = current;
 }
 
+// 时差对照的两个下拉始终列全部档案，不受档案区筛选影响
+async function loadAllZones() {
+  const payload = await request('/api/zones');
+  state.allZones = payload.zones || [];
+  renderCompareZoneOptions();
+}
+
+function compareOptionHtml() {
+  return state.allZones
+    .map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}　${escapeHtml(item.displayName)}（${escapeHtml(item.offsetText)}）</option>`)
+    .join('');
+}
+
+function renderCompareZoneOptions() {
+  const selectA = el('compare-zone-a');
+  const selectB = el('compare-zone-b');
+  const currentA = selectA.value;
+  const currentB = selectB.value;
+  const html = compareOptionHtml();
+  selectA.innerHTML = html;
+  selectB.innerHTML = html;
+  if (state.allZones.some((item) => item.id === currentA)) selectA.value = currentA;
+  if (state.allZones.some((item) => item.id === currentB)) selectB.value = currentB;
+}
+
 function openZoneForm(zone) {
   state.editingId = zone ? zone.id : '';
   el('zone-form-title').textContent = zone ? `编辑档案：${zone.name}` : '新建档案';
@@ -240,6 +266,7 @@ async function submitZone(event) {
     }
     closeZoneForm();
     await loadZones();
+    await loadAllZones();
   } catch (err) {
     notify(err.message, 'error');
     markField(err.field);
@@ -280,6 +307,117 @@ function renderConvert(result) {
   el('convert-empty').classList.toggle('hidden', result.results.length > 0);
 }
 
+// ===== 时差对照 =====
+
+function modeTag(dst, usesDst) {
+  if (!usesDst) return '<span class="tag off">不实行</span>';
+  return dst
+    ? '<span class="tag on">夏令时中</span>'
+    : '<span class="tag off">标准时</span>';
+}
+
+async function runCompare() {
+  clearNotice();
+  clearFieldMarks();
+  const yearValue = el('compare-year').value.trim();
+  const payload = {
+    aZoneId: el('compare-zone-a').value,
+    bZoneId: el('compare-zone-b').value,
+    year: yearValue === '' ? null : yearValue,
+  };
+  try {
+    const result = await request('/api/compare', { method: 'POST', body: JSON.stringify(payload) });
+    renderCompare(result);
+  } catch (err) {
+    notify(err.message, 'error');
+    markField(err.field);
+    el('compare-result').classList.add('hidden');
+  }
+}
+
+function renderCompare(result) {
+  el('compare-result').classList.remove('hidden');
+  const a = result.a;
+  const b = result.b;
+
+  el('cmp-standard').innerHTML =
+    `${escapeHtml(a.name)}（${escapeHtml(a.displayName)}，${escapeHtml(a.offsetText)}）`
+    + ` 对 ${escapeHtml(b.name)}（${escapeHtml(b.displayName)}，${escapeHtml(b.offsetText)}）：`
+    + ` <strong>${result.sameZone ? '标准偏移差为零' : `标准偏移差 ${result.standardDiffMinutes} 分钟`}</strong>，${escapeHtml(result.standardDiffText)}`;
+
+  const cur = result.current;
+  el('cmp-current').innerHTML = `对照时刻 ${formatTime(cur.checkedAt)}：<strong>${escapeHtml(cur.nowDiffText)}</strong>`;
+  el('cmp-current-sides').innerHTML = `
+    <div class="cmp-side">
+      <span class="cmp-side-name mono">${escapeHtml(a.name)}</span>
+      ${modeTag(cur.aActive === true, a.usesDst)}
+      <span class="cmp-side-note">${escapeHtml(cur.aActiveText)}</span>
+    </div>
+    <div class="cmp-side">
+      <span class="cmp-side-name mono">${escapeHtml(b.name)}</span>
+      ${modeTag(cur.bActive === true, b.usesDst)}
+      ${result.sameZone ? '' : `<span class="cmp-side-note">${escapeHtml(cur.bActiveText)}</span>`}
+    </div>`;
+
+  // 同档案对照没有组合表与年内时段表，这两块直接收起
+  el('cmp-combos-block').classList.toggle('hidden', result.sameZone);
+  el('cmp-segments-block').classList.toggle('hidden', result.sameZone);
+
+  el('cmp-combos-body').innerHTML = result.combos.map((item) => `<tr class="${item.occurs ? '' : 'muted-row'}">
+      <td>${escapeHtml(item.aMode)}</td>
+      <td>${escapeHtml(item.bMode)}</td>
+      <td class="mono">${escapeHtml(offsetTextOf(item.aOffsetMinutes))}</td>
+      <td class="mono">${escapeHtml(offsetTextOf(item.bOffsetMinutes))}</td>
+      <td><strong>${escapeHtml(item.diffText)}</strong></td>
+      <td>${item.occurs ? '<span class="tag on">会出现</span>' : '<span class="tag off">这一年不出现</span>'}</td>
+    </tr>`).join('');
+
+  const equalBlock = el('cmp-equal-block');
+  if (result.equalStandard) {
+    equalBlock.classList.remove('hidden');
+    el('cmp-equal-summary').textContent = result.equalStandard.summary;
+    el('cmp-equal-windows').innerHTML = result.equalStandard.windows.map((w) =>
+      `<p class="cmp-window"><span class="tag warn">时差变化</span> ${escapeHtml(w.fromText)} 起，到 ${escapeHtml(w.toText)} 止：<strong>${escapeHtml(w.diffText)}</strong></p>`).join('');
+  } else {
+    equalBlock.classList.add('hidden');
+  }
+
+  el('cmp-segments').innerHTML = result.segments.map((item) => {
+    if (item.type === 'switch') {
+      return `<li class="cmp-switch">${escapeHtml(item.atText)}　${escapeHtml(item.sideText)} ${escapeHtml(item.zoneName)}：${escapeHtml(item.note)}</li>`;
+    }
+    return `<li class="cmp-span">
+        <div class="cmp-span-head">
+          <strong>${escapeHtml(item.diffText)}</strong>
+          <span class="cmp-span-range">${escapeHtml(item.fromText)} 起，至 ${escapeHtml(item.toText)} 止</span>
+        </div>
+        <div class="cmp-span-modes">
+          <span>甲地 ${modeTag(item.aDst, a.usesDst)}（实际 ${escapeHtml(offsetTextOf(item.aOffsetMinutes))}）</span>
+          <span>乙地 ${modeTag(item.bDst, b.usesDst)}（实际 ${escapeHtml(offsetTextOf(item.bOffsetMinutes))}）</span>
+        </div>
+      </li>`;
+  }).join('');
+
+  el('cmp-dategap').innerHTML = escapeHtml(result.dateGapText)
+    + (result.sameZone ? '' : `；这一年实际出现的偏移组合下，最小时差 <strong>${escapeHtml(result.dateGap.minDiffText)}</strong>（${result.dateGap.minDiff} 分钟），最大时差 <strong>${escapeHtml(result.dateGap.maxDiffText)}</strong>（${result.dateGap.maxDiff} 分钟）`);
+  el('cmp-boundaries').innerHTML = result.dateBoundaries.length
+    ? result.dateBoundaries.map((item) => `<div class="cmp-boundary">
+        <p class="cmp-boundary-dir">${item.direction === 'ahead' ? '乙地翻到后一天' : '乙地落在前一天'}　<span class="cmp-pair">${escapeHtml(item.pairText)}</span></p>
+        <p class="cmp-clock">${escapeHtml(item.openText)}</p>
+        <p class="cmp-clock soft">${escapeHtml(item.closeText)}</p>
+      </div>`).join('')
+    : '<p class="cmp-clock soft">两地日期始终相同，没有翻到前一天或后一天的时刻。</p>';
+
+  el('compare-meta').textContent = `对照年份 ${result.year}：${a.name} 对 ${b.name}${result.sameZone ? '（同一条档案）' : ''}`;
+}
+
+// 前端按分钟拼出 UTC±HH:MM，避免再向服务端要一遍
+function offsetTextOf(minutes) {
+  const sign = minutes < 0 ? '-' : '+';
+  const abs = Math.abs(minutes);
+  return `UTC${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
+}
+
 // 列表上的操作用事件委托统一处理，列表重绘之后不需要重新绑定
 document.addEventListener('click', async (event) => {
   const node = event.target.closest('button');
@@ -301,6 +439,7 @@ document.addEventListener('click', async (event) => {
       if (state.editingId === node.dataset.zoneDelete) closeZoneForm();
       notify('时区档案已删除', 'ok');
       await loadZones();
+      await loadAllZones();
     } catch (err) {
       notify(err.message, 'error');
     }
@@ -330,6 +469,14 @@ el('zone-filter-dst').addEventListener('change', () => {
   loadZones().catch((err) => notify(err.message, 'error'));
 });
 el('convert-run').addEventListener('click', runConvert);
+el('compare-run').addEventListener('click', runCompare);
+el('compare-swap').addEventListener('click', () => {
+  const selectA = el('compare-zone-a');
+  const selectB = el('compare-zone-b');
+  const kept = selectA.value;
+  selectA.value = selectB.value;
+  selectB.value = kept;
+});
 el('operator').addEventListener('change', () => {
   window.localStorage.setItem(OPERATOR_KEY, currentOperator());
 });
@@ -341,4 +488,7 @@ loadHealth();
 const now = new Date();
 el('convert-date').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 el('convert-time').value = '09:30';
-loadZones().catch((err) => notify(err.message, 'error'));
+el('compare-year').value = String(now.getFullYear());
+loadZones()
+  .then(loadAllZones)
+  .catch((err) => notify(err.message, 'error'));

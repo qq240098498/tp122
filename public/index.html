@@ -130,6 +130,69 @@
       </div>
       <p class="empty-tip hidden" id="convert-empty">还没有换算结果</p>
     </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>时差对照</h2>
+        <div class="filters">
+          <label class="inline" data-field="aZoneId">甲地<select id="compare-zone-a"></select></label>
+          <button type="button" id="compare-swap" class="ghost">对调甲乙</button>
+          <label class="inline" data-field="bZoneId">乙地<select id="compare-zone-b"></select></label>
+          <label class="inline" data-field="year">年份<input id="compare-year" type="number" min="1900" max="2100" maxlength="4" placeholder="不填按今年"></label>
+          <button type="button" id="compare-run">对照一遍</button>
+        </div>
+      </div>
+      <p class="convert-meta" id="compare-meta">任选两条档案，给出标准偏移差、此刻夏令时状态、夏令时生效期内两侧时差、一年里时差变化的时段，以及当地日期最多差几天、翻日边界落在当地几点</p>
+
+      <div id="compare-result" class="cmp-result hidden">
+        <div class="cmp-block">
+          <h3>标准偏移差</h3>
+          <p class="cmp-line" id="cmp-standard"></p>
+        </div>
+
+        <div class="cmp-block" id="cmp-current-block">
+          <h3>此刻两边是否处在夏令时</h3>
+          <p class="cmp-line" id="cmp-current"></p>
+          <div class="cmp-sides" id="cmp-current-sides"></div>
+        </div>
+
+        <div class="cmp-block" id="cmp-combos-block">
+          <h3>夏令时生效期内两侧时差分别是多少</h3>
+          <div class="table-wrap">
+            <table class="grid cmp-grid">
+              <thead>
+                <tr>
+                  <th>甲地状态</th>
+                  <th>乙地状态</th>
+                  <th>甲实际偏移</th>
+                  <th>乙实际偏移</th>
+                  <th>时差</th>
+                  <th>选定年份是否出现</th>
+                </tr>
+              </thead>
+              <tbody id="cmp-combos-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="cmp-block hidden" id="cmp-equal-block">
+          <h3>标准偏移相同、只有一边实行夏令时</h3>
+          <p class="cmp-line" id="cmp-equal-summary"></p>
+          <div id="cmp-equal-windows"></div>
+        </div>
+
+        <div class="cmp-block" id="cmp-segments-block">
+          <h3>选定年份里时差变化的时段（边界按 UTC 写）</h3>
+          <ol class="cmp-timeline" id="cmp-segments"></ol>
+        </div>
+
+        <div class="cmp-block">
+          <h3>当地日期最多相差几天、什么时候翻到前后一天</h3>
+          <p class="cmp-line" id="cmp-dategap"></p>
+          <div id="cmp-boundaries"></div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <script src="app.js"></script>

@@ -61,6 +61,15 @@ app.post('/api/convert', (req, res) => {
   }
 });
 
+// 时差对照：任选两条档案，给出偏移差、夏令时状态、年内时段与翻日边界
+app.post('/api/compare', (req, res) => {
+  try {
+    res.json(api.compare(req.body || {}));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 // 未匹配到的接口路径统一返回说明，避免前端拿到一串页面内容
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: { code: 'API_NOT_FOUND', message: '接口不存在', field: '' } });
